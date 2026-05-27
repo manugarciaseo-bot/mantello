@@ -92,7 +92,9 @@ async function getHistorial(subscriberId, redisUrl, redisToken) {
       headers: { Authorization: `Bearer ${redisToken}` }
     });
     const data = await res.json();
-    if (data.result) return JSON.parse(data.result);
+    if (data.result && typeof data.result === 'string') {
+      return JSON.parse(data.result);
+    }
     return [];
   } catch (e) {
     return [];
@@ -102,13 +104,14 @@ async function getHistorial(subscriberId, redisUrl, redisToken) {
 async function saveHistorial(subscriberId, historial, redisUrl, redisToken) {
   try {
     const ultimos = historial.slice(-10);
-    await fetch(`${redisUrl}/set/chat:${subscriberId}`, {
+    const params = new URLSearchParams({ ex: '86400' });
+    await fetch(`${redisUrl}/set/chat:${subscriberId}?${params}`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${redisToken}`,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify(["chat:" + subscriberId, JSON.stringify(ultimos), "EX", "86400"])
+      body: JSON.stringify(JSON.stringify(ultimos))
     });
   } catch (e) {}
 }
