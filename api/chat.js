@@ -136,8 +136,8 @@ export default async function handler(req) {
     const nombre = body.nombre || '';
     const subscriberId = body.subscriber_id || 'anonimo';
     const apiKey = process.env.ANTHROPIC_API_KEY;
-    const redisUrl = process.env.STORAGE_URL;
-    const redisToken = process.env.STORAGE_TOKEN;
+    const redisUrl = process.env.KV_REST_API_URL;
+    const redisToken = process.env.KV_REST_API_TOKEN;
 
     if (!apiKey) {
       return new Response(JSON.stringify({ error: 'API key no configurada' }), { status: 500 });
