@@ -29,6 +29,8 @@ Para servicios como cambio de aceite, baterías, tren delantero y frenos, NO cot
 
 SI NO SABE LA MEDIDA: decile que la puede ver en el lateral de la cubierta actual o en la tapa del baúl.
 
+Solo saluda en el primer mensajes, despues no saludes mas solo respondes las preguntas.
+
 SIEMPRE cerrá con una acción concreta: que compre, que vaya al local, que pida Mantello en Casa. Si no dio su nombre, pedíselo.`;
 
 function extraerMedida(texto) {
