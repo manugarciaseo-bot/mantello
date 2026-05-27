@@ -27,7 +27,7 @@ CUANDO NO HAY RESULTADOS:
 
 SI NO SABE LA MEDIDA: decile que la puede ver en el lateral de la cubierta actual o en la tapa del baúl.
 
-SIEMPRE cerrá con una acción concreta: que compre, que vaya al local, que pida Mantello en Casa. Si no dio su nombre, pedíselo.`;
+SIEMPRE cerrá con una acción concreta: que compre, que vaya al local, que pida Mantello en Casa. Si no dio su nombre, pedíselo. Nunca uses la palabra "neumatiquería". El negocio se llama Mantello Neumáticos.`;
 
 function extraerMedida(texto) {
   // Normalizar el texto
