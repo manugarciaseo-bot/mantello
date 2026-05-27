@@ -101,7 +101,6 @@ async function getHistorial(subscriberId, redisUrl, redisToken) {
 
 async function saveHistorial(subscriberId, historial, redisUrl, redisToken) {
   try {
-    // Guardar solo los últimos 10 mensajes para no crecer indefinidamente
     const ultimos = historial.slice(-10);
     await fetch(`${redisUrl}/set/chat:${subscriberId}`, {
       method: 'POST',
@@ -109,14 +108,9 @@ async function saveHistorial(subscriberId, historial, redisUrl, redisToken) {
         Authorization: `Bearer ${redisToken}`,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({
-        value: JSON.stringify(ultimos),
-        ex: 86400 // expira en 24 horas
-      })
+      body: JSON.stringify(["chat:" + subscriberId, JSON.stringify(ultimos), "EX", "86400"])
     });
-  } catch (e) {
-    // silencioso
-  }
+  } catch (e) {}
 }
 
 export default async function handler(req) {
@@ -143,7 +137,7 @@ export default async function handler(req) {
       return new Response(JSON.stringify({ error: 'API key no configurada' }), { status: 500 });
     }
 
-    // Obtener historial del usuario
+    // Obtener historial
     let historial = [];
     if (redisUrl && redisToken) {
       historial = await getHistorial(subscriberId, redisUrl, redisToken);
@@ -195,7 +189,7 @@ export default async function handler(req) {
     if (redisUrl && redisToken) {
       const nuevoHistorial = [
         ...historial,
-        { role: 'user', content: mensaje }, // guardamos sin el contexto del catálogo
+        { role: 'user', content: mensaje },
         { role: 'assistant', content: respuesta }
       ];
       await saveHistorial(subscriberId, nuevoHistorial, redisUrl, redisToken);
