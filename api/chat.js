@@ -1,6 +1,6 @@
 export const config = { runtime: 'edge' };
 
-const SYSTEM_PROMPT = `Sos el asistente virtual de Mantello Neumáticos atendiendo por WhatsApp. Representás una empresa profesional de Mendoza, Argentina, hemisferio sur. Tu objetivo es vender y resolver consultas. Trato de vos, tono amable y comercial, como un vendedor profesional de una empresa seria. Sin groserías, sin slang, sin "che", sin informalidad excesiva. Mensajes cortos. Algún emoji ocasional. Jamás usés mexicanismos. Si te preguntan si sos un bot o una IA, respondé honestamente que sí, que sos el asistente virtual de Mantello. Nunca uses la palabra "neumatiquería". El negocio se llama Mantello Neumáticos.
+const SYSTEM_PROMPT = `Sos el asistente virtual de Mantello Neumáticos atendiendo por WhatsApp. Representás una empresa profesional de Mendoza, Argentina, hemisferio sur. Tu objetivo es vender y resolver consultas. Trato de vos, tono amable y comercial, como un vendedor profesional de una empresa seria. Sin groserías, sin slang, sin "che", sin informalidad excesiva. Mensajes cortos. Algún emoji ocasional. Jamás usés mexicanismos. Si te preguntan si sos un bot o una IA, respondé honestamente que sí, que sos el asistente virtual de Mantello. Nunca uses la palabra "neumatiquería". El negocio se llama Mantello Neumáticos. No saludes ni te presentes en cada mensaje. Solo saludá la primera vez. En mensajes siguientes respondé directamente la consulta sin introducción.
 
 SUCURSALES:
 - Casa Central: Francisco Gabrielli 3885, Maipú — Tel: 0261 559-7990
@@ -28,8 +28,6 @@ CUANDO NO HAY RESULTADOS:
 Para servicios como cambio de aceite, baterías, tren delantero y frenos, NO cotices precios. Decile que esos servicios los tiene que consultar directamente en la sucursal. Siempre preguntá de qué zona es el cliente para recomendarle la sucursal más cercana.
 
 SI NO SABE LA MEDIDA: decile que la puede ver en el lateral de la cubierta actual o en la tapa del baúl.
-
-No saludes ni te presentes en cada mensaje. Solo saludá la primera vez. En mensajes siguientes respondé directamente la consulta sin introducción.
 
 SIEMPRE cerrá con una acción concreta: que compre, que vaya al local, que pida Mantello en Casa. Si no dio su nombre, pedíselo.`;
 
@@ -88,36 +86,6 @@ async function fetchCatalogo(medida) {
   }
 }
 
-async function getHistorial(subscriberId, redisUrl, redisToken) {
-  try {
-    const res = await fetch(`${redisUrl}/get/chat:${subscriberId}`, {
-      headers: { Authorization: `Bearer ${redisToken}` }
-    });
-    const data = await res.json();
-    if (data.result && typeof data.result === 'string') {
-      return JSON.parse(data.result);
-    }
-    return [];
-  } catch (e) {
-    return [];
-  }
-}
-
-async function saveHistorial(subscriberId, historial, redisUrl, redisToken) {
-  try {
-    const ultimos = historial.slice(-10);
-    const params = new URLSearchParams({ ex: '86400' });
-    await fetch(`${redisUrl}/set/chat:${subscriberId}?${params}`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${redisToken}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(JSON.stringify(ultimos))
-    });
-  } catch (e) {}
-}
-
 export default async function handler(req) {
   if (req.method === 'OPTIONS') {
     return new Response('ok', {
@@ -133,22 +101,12 @@ export default async function handler(req) {
     const body = await req.json();
     const mensaje = body.mensaje || '';
     const nombre = body.nombre || '';
-    const subscriberId = body.subscriber_id || 'anonimo';
     const apiKey = process.env.ANTHROPIC_API_KEY;
-    const redisUrl = process.env.KV_REST_API_URL;
-    const redisToken = process.env.KV_REST_API_TOKEN;
 
     if (!apiKey) {
       return new Response(JSON.stringify({ error: 'API key no configurada' }), { status: 500 });
     }
 
-    // Obtener historial
-    let historial = [];
-    if (redisUrl && redisToken) {
-      historial = await getHistorial(subscriberId, redisUrl, redisToken);
-    }
-
-    // Extraer medida y buscar catálogo
     const medida = extraerMedida(mensaje);
     let contextoProductos = '';
 
@@ -164,14 +122,8 @@ export default async function handler(req) {
       }
     }
 
-    // Armar mensajes con historial
     const mensajeActual = mensaje + contextoProductos + (nombre ? `\n\n[Nombre del cliente: ${nombre}]` : '');
-    const messages = [
-      ...historial,
-      { role: 'user', content: mensajeActual }
-    ];
 
-    // Llamar a Claude
     const claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -183,22 +135,12 @@ export default async function handler(req) {
         model: 'claude-haiku-4-5-20251001',
         max_tokens: 500,
         system: SYSTEM_PROMPT,
-        messages
+        messages: [{ role: 'user', content: mensajeActual }]
       })
     });
 
     const claudeData = await claudeRes.json();
     const respuesta = claudeData.content?.[0]?.text || 'Error al generar respuesta';
-
-    // Guardar historial actualizado
-    if (redisUrl && redisToken) {
-      const nuevoHistorial = [
-        ...historial,
-        { role: 'user', content: mensaje },
-        { role: 'assistant', content: respuesta }
-      ];
-      await saveHistorial(subscriberId, nuevoHistorial, redisUrl, redisToken);
-    }
 
     return new Response(JSON.stringify({ respuesta }), {
       headers: {
