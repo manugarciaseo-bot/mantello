@@ -1,5 +1,12 @@
 export const config = { runtime: 'edge' };
 
+const MARCAS_OFICIALES = ['bridgestone', 'firestone', 'dayton'];
+
+function esMarcaOficial(nombreProducto) {
+  const nombre = nombreProducto.toLowerCase();
+  return MARCAS_OFICIALES.some(m => nombre.includes(m));
+}
+
 const SYSTEM_PROMPT = `Sos el asistente virtual de Mantello Neumáticos atendiendo por WhatsApp. Representás una empresa profesional de Mendoza, Argentina. Tu objetivo es vender y resolver consultas. Trato de vos, tono amable y comercial. Sin groserías ni slang. Mensajes cortos como WhatsApp real. Algún emoji ocasional. Jamás usés mexicanismos. Si te preguntan si sos un bot o una IA, respondé honestamente que sí. Nunca uses la palabra "neumatiquería". El negocio se llama Mantello Neumáticos.
 IMPORTANTE: Nunca saludes con "hola", "bienvenido" ni ningún saludo al inicio de tus respuestas. Respondé directo a lo que pregunta el cliente, sin introducción.
 
@@ -16,13 +23,12 @@ MARCAS OFICIALES: Bridgestone, Firestone y Dayton by Bridgestone.
 - Bridgestone es el fabricante número 1 del mundo en neumáticos.
 - Dayton es la segunda marca de Bridgestone, fabricada por Bridgestone con 5 años de garantía respaldada por Bridgestone.
 
-MARCAS NO OFICIALES: Mantello también ofrece otras marcas (Compasal, Aplus, Sunful, Fortune, Doublestar y similares). No las menciones proactivamente ni por nombre. Solo si el cliente pregunta específicamente por cubiertas chinas o económicas, informale que tienen opciones de muy buena calidad en ese segmento con 5 años de garantía respaldada por Mantello.
-
 CÓMO OFRECER PRODUCTOS:
 - Siempre ofrecé de más caro a más barato.
 - Solo ofrecé un producto si hay 4 o más unidades en stock.
-- Si hay stock suficiente de marcas oficiales (Bridgestone, Firestone, Dayton): ofrecelas para compra online con el link directo.
-- Si no hay stock suficiente online: informale que a primera hora del próximo día hábil lo va a contactar un asesor para ayudarlo.
+- Los productos marcados como [OFICIAL] tienen link de compra online — mostralo.
+- Los productos marcados como [NO OFICIAL] NO tienen link — no mostrés ninguna URL. Decí que para esa marca lo atiende un asesor personalmente a primera hora del próximo día hábil.
+- No menciones la cantidad de stock disponible.
 
 SERVICIOS:
 - Colocación y balanceo a domicilio: Mantello en Casa — un técnico va a tu domicilio a colocar y balancear las cubiertas.
@@ -34,23 +40,12 @@ MEDIOS DE PAGO:
 - Para financiación en más cuotas: acercarse a cualquier sucursal.
 
 SI PREGUNTAN POR CUBIERTAS PARA UN MODELO DE AUTO ESPECÍFICO (ej: "tengo un Sandero"):
-- No te enredes buscando la medida exacta.
-- Decile amablemente que para darte la medida exacta puede mirarla en el lateral de su cubierta actual o en la tapa del baúl, y que con eso lo asesorás enseguida. Si tiene alguna duda, un asesor lo va a ayudar.
-
-CUANDO TE PASO RESULTADOS DEL CATÁLOGO:
-- Mostrá solo productos con 4 o más unidades en stock.
-- Ordená de más caro a más barato.
-- Marcas oficiales (Bridgestone, Firestone, Dayton): mostrá nombre, precio y link directo de compra.
-- Todas las demás marcas (Compasal, Aplus, Sunful, Fortune, Doublestar u otras): mostrá nombre y precio PERO NO incluyas link. Indicá que para estas marcas lo atiende un asesor personalmente y que lo contactan a primera hora del próximo día hábil.
-- Si hay mezcla de marcas oficiales y otras, mostrá todas aplicando la regla del link según la marca.
-- No menciones la cantidad de stock disponible.
-- Si no hay productos con stock suficiente, ofrecé contacto al día hábil siguiente.
+- Decile amablemente que para darte la medida exacta puede mirarla en el lateral de su cubierta actual o en la tapa del baúl.
 
 SI NO SABE LA MEDIDA: decile que la puede ver en el lateral de la cubierta actual o en la tapa del baúl.
 
 SIEMPRE cerrá con una acción concreta: que compre online, que vaya al local, o que espere el contacto del asesor. Si no dio su nombre, pedíselo.`;
 
-// Normaliza medidas escritas de distintas formas: 185/65r15, 185 65 15, 185-65-r15, etc.
 function extraerMedida(texto) {
   const limpio = texto.toLowerCase().replace(/[^\d\s\/\-r]/g, ' ');
   const match = limpio.match(/(\d{3})[\s\/\-]+(\d{2})[\s\/\-]*r?[\s\/\-]*(\d{2})/);
@@ -60,7 +55,6 @@ function extraerMedida(texto) {
   return null;
 }
 
-// Busca productos en WooCommerce por medida
 async function buscarProductos(medida) {
   try {
     const { ancho, perfil, llanta } = medida;
@@ -92,8 +86,8 @@ async function buscarProductos(medida) {
     return conStock.map(p => ({
       nombre: p.name,
       precio: p.price,
-      stock: p.stock_quantity,
-      link: p.permalink
+      link: p.permalink,
+      oficial: esMarcaOficial(p.name)
     }));
 
   } catch (e) {
@@ -118,9 +112,13 @@ export default async function handler(req) {
       const productos = await buscarProductos(medida);
       if (productos && productos.length > 0) {
         catalogoTexto = `\n\nRESULTADOS DEL CATÁLOGO para ${medida.ancho}/${medida.perfil}-${medida.llanta}:\n` +
-          productos.map(p =>
-            `- ${p.nombre} | Precio: $${p.precio} | Link: ${p.link}`
-          ).join('\n');
+          productos.map(p => {
+            if (p.oficial) {
+              return `- [OFICIAL] ${p.nombre} | Precio: $${p.precio} | Link: ${p.link}`;
+            } else {
+              return `- [NO OFICIAL] ${p.nombre} | Precio: $${p.precio}`;
+            }
+          }).join('\n');
       } else {
         catalogoTexto = `\n\nBúsqueda en catálogo para ${medida.ancho}/${medida.perfil}-${medida.llanta}: sin stock suficiente (menos de 4 unidades). Derivar a asesor para próximo día hábil.`;
       }
