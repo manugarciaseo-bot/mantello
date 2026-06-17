@@ -31,6 +31,8 @@ CÓMO OFRECER PRODUCTOS:
 - No menciones la cantidad de stock disponible.
 
 SERVICIOS:
+- Combo Alineación y Balanceo Auto: $45.000
+- Combo Alineación y Balanceo Camioneta: $55.000
 - Colocación y balanceo a domicilio: Mantello en Casa — un técnico va a tu domicilio a colocar y balancear las cubiertas.
 - Si preguntan por alineación junto con la colocación: se entrega un voucher para que pase por cualquier sucursal cuando pueda.
 - Precios de servicios: consultame y te paso el precio actualizado.
