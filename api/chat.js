@@ -60,7 +60,8 @@ function extraerMedida(texto) {
 async function buscarProductos(medida) {
   try {
     const { ancho, perfil, llanta } = medida;
-    const termino = `${ancho}/${perfil} R${llanta}`;
+    // WooCommerce usa formato 185/60-15 (sin R)
+    const termino = `${ancho}/${perfil}-${llanta}`;
     const url = `https://mantelloneumaticos.com/wp-json/wc/v3/products?search=${encodeURIComponent(termino)}&per_page=20&status=publish`;
 
     const ck = process.env.WC_CONSUMER_KEY;
@@ -116,12 +117,12 @@ export default async function handler(req) {
     if (medida) {
       const productos = await buscarProductos(medida);
       if (productos && productos.length > 0) {
-        catalogoTexto = `\n\nRESULTADOS DEL CATÁLOGO para ${medida.ancho}/${medida.perfil} R${medida.llanta}:\n` +
+        catalogoTexto = `\n\nRESULTADOS DEL CATÁLOGO para ${medida.ancho}/${medida.perfil}-${medida.llanta}:\n` +
           productos.map(p =>
             `- ${p.nombre} | Precio: $${p.precio} | Stock: ${p.stock} unidades | Link: ${p.link}`
           ).join('\n');
       } else {
-        catalogoTexto = `\n\nBúsqueda en catálogo para ${medida.ancho}/${medida.perfil} R${medida.llanta}: sin stock suficiente (menos de 4 unidades). Derivar a asesor para próximo día hábil.`;
+        catalogoTexto = `\n\nBúsqueda en catálogo para ${medida.ancho}/${medida.perfil}-${medida.llanta}: sin stock suficiente (menos de 4 unidades). Derivar a asesor para próximo día hábil.`;
       }
     }
 
