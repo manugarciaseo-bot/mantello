@@ -25,7 +25,6 @@ MARCAS OFICIALES: Bridgestone, Firestone y Dayton by Bridgestone.
 
 CÓMO OFRECER PRODUCTOS:
 - Siempre ofrecé de más caro a más barato.
-- Solo ofrecé un producto si hay 4 o más unidades en stock.
 - Los productos marcados como [OFICIAL] tienen link de compra online — mostralo.
 - Los productos marcados como [NO OFICIAL] NO tienen link — no mostrés ninguna URL. Decí que para esa marca lo atiende un asesor personalmente a primera hora del próximo día hábil.
 - No menciones la cantidad de stock disponible.
@@ -48,22 +47,21 @@ SI NO SABE LA MEDIDA: decile que la puede ver en el lateral de la cubierta actua
 
 SIEMPRE cerrá con una acción concreta: que compre online, que vaya al local, o que espere el contacto del asesor. Si no dio su nombre, pedíselo.`;
 
-const EXTRACT_PROMPT = `Sos un extractor de medidas de neumáticos. Tu única tarea es detectar si el mensaje contiene una medida de neumático y devolver SOLO un JSON, sin texto adicional, sin explicaciones.
+const EXTRACT_PROMPT = `Sos un extractor de datos de mensajes sobre neumáticos. Tu única tarea es detectar si el mensaje contiene una medida de neumático y cuántas unidades pide el cliente. Devolvé SOLO un JSON, sin texto adicional, sin explicaciones.
 
-Formatos posibles que el usuario puede escribir:
-- 185/65R15, 185/65-15, 185 65 15, 185-65-r15, 18565r15
-- "necesito 4 gomas 205/55-16"
-- "quiero 2 cubiertas para mi auto 195 60 15"
-- "cuánto sale una 175/70r13"
-- cualquier variación humana de estos formatos
+Ejemplos de mensajes y respuestas esperadas:
+- "185/65R15" → {"encontrada": true, "ancho": "185", "perfil": "65", "llanta": "15", "cantidad": 4}
+- "necesito 4 gomas 205/55-16" → {"encontrada": true, "ancho": "205", "perfil": "55", "llanta": "16", "cantidad": 4}
+- "quiero 2 cubiertas 195/60-15" → {"encontrada": true, "ancho": "195", "perfil": "60", "llanta": "15", "cantidad": 2}
+- "cuánto sale una 175/70r13" → {"encontrada": true, "ancho": "175", "perfil": "70", "llanta": "13", "cantidad": 1}
+- "necesito el precio de 4 cubiertas 205/55-16" → {"encontrada": true, "ancho": "205", "perfil": "55", "llanta": "16", "cantidad": 4}
+- "hola quiero saber precios" → {"encontrada": false}
+- "tienen gomas para un Sandero?" → {"encontrada": false}
 
-Si encontrás una medida, devolvé:
-{"encontrada": true, "ancho": "185", "perfil": "65", "llanta": "15"}
-
-Si NO hay medida, devolvé:
-{"encontrada": false}
-
-SOLO JSON, nada más.`;
+Reglas:
+- Si el cliente no especifica cantidad, usá 4 por defecto.
+- La medida puede venir en cualquier formato: 185/65R15, 185-65-15, 185 65 15, etc.
+- SOLO JSON, nada más.`;
 
 async function detectarMedidaConClaude(mensaje) {
   try {
@@ -90,7 +88,7 @@ async function detectarMedidaConClaude(mensaje) {
   }
 }
 
-async function buscarProductos(medida) {
+async function buscarProductos(medida, cantidad) {
   try {
     const { ancho, perfil, llanta } = medida;
     const termino = `${ancho}/${perfil}-${llanta}`;
@@ -108,10 +106,12 @@ async function buscarProductos(medida) {
 
     const productos = await res.json();
 
+    // Filtrar por la cantidad mínima requerida
+    const minStock = cantidad || 4;
     const conStock = productos.filter(p =>
       p.stock_status === 'instock' &&
       p.stock_quantity !== null &&
-      p.stock_quantity >= 4
+      p.stock_quantity >= minStock
     );
 
     if (conStock.length === 0) return null;
@@ -140,14 +140,14 @@ export default async function handler(req) {
     const mensaje = body.mensaje || body.message || '';
     const nombre = body.nombre || body.name || 'cliente';
 
-    // Claude detecta si hay medida en el mensaje
     const deteccion = await detectarMedidaConClaude(mensaje);
     let catalogoTexto = '';
 
     if (deteccion.encontrada) {
-      const productos = await buscarProductos(deteccion);
+      const cantidad = deteccion.cantidad || 4;
+      const productos = await buscarProductos(deteccion, cantidad);
       if (productos && productos.length > 0) {
-        catalogoTexto = `\n\nRESULTADOS DEL CATÁLOGO para ${deteccion.ancho}/${deteccion.perfil}-${deteccion.llanta}:\n` +
+        catalogoTexto = `\n\nRESULTADOS DEL CATÁLOGO para ${deteccion.ancho}/${deteccion.perfil}-${deteccion.llanta} (stock mínimo requerido: ${cantidad} unidades):\n` +
           productos.map(p => {
             if (p.oficial) {
               return `- [OFICIAL] ${p.nombre} | Precio: $${p.precio} | Link: ${p.link}`;
@@ -156,7 +156,7 @@ export default async function handler(req) {
             }
           }).join('\n');
       } else {
-        catalogoTexto = `\n\nBúsqueda en catálogo para ${deteccion.ancho}/${deteccion.perfil}-${deteccion.llanta}: sin stock suficiente (menos de 4 unidades). Derivar a asesor para próximo día hábil.`;
+        catalogoTexto = `\n\nBúsqueda en catálogo para ${deteccion.ancho}/${deteccion.perfil}-${deteccion.llanta}: sin stock suficiente para ${cantidad} unidades. Derivar a asesor para próximo día hábil.`;
       }
     }
 
