@@ -49,7 +49,7 @@ SI NO SABE LA MEDIDA: decile que la puede ver en el lateral de la cubierta actua
 SIEMPRE cerrá con una acción concreta: que compre online, que vaya al local, o que espere el contacto del asesor. Si no dio su nombre, pedíselo.`;
 
 function extraerMedida(texto) {
-  const limpio = texto.toLowerCase().replace(/[^\d\s\/\-r]/g, ' ');
+  const limpio = texto.toLowerCase();
   const match = limpio.match(/(\d{3})[\s\/\-]+(\d{2})[\s\/\-]*r?[\s\/\-]*(\d{2})/);
   if (match) {
     return { ancho: match[1], perfil: match[2], llanta: match[3] };
