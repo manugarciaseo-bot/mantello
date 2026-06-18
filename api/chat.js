@@ -30,12 +30,12 @@ CÓMO OFRECER PRODUCTOS:
 - Los productos marcados como [NO OFICIAL] NO tienen link — no mostrés ninguna URL. Decí que para esa marca lo atiende un asesor personalmente a primera hora del próximo día hábil.
 - No menciones la cantidad de stock disponible.
 
-SERVICIOS:
+SERVICIOS Y PRECIOS:
 - Combo Alineación y Balanceo Auto: $45.000
 - Combo Alineación y Balanceo Camioneta: $55.000
+- Estos servicios están disponibles en todas las sucursales sin turno previo.
 - Colocación y balanceo a domicilio: Mantello en Casa — un técnico va a tu domicilio a colocar y balancear las cubiertas.
 - Si preguntan por alineación junto con la colocación: se entrega un voucher para que pase por cualquier sucursal cuando pueda.
-- Precios de servicios: consultame y te paso el precio actualizado.
 
 MEDIOS DE PAGO:
 - Contado, transferencia bancaria o 1 cuota sin interés.
@@ -48,13 +48,46 @@ SI NO SABE LA MEDIDA: decile que la puede ver en el lateral de la cubierta actua
 
 SIEMPRE cerrá con una acción concreta: que compre online, que vaya al local, o que espere el contacto del asesor. Si no dio su nombre, pedíselo.`;
 
-function extraerMedida(texto) {
-  const limpio = texto.toLowerCase();
-  const match = limpio.match(/(\d{3})[\s\/\-]+(\d{2})[\s\/\-]*r?[\s\/\-]*(\d{2})/);
-  if (match) {
-    return { ancho: match[1], perfil: match[2], llanta: match[3] };
+const EXTRACT_PROMPT = `Sos un extractor de medidas de neumáticos. Tu única tarea es detectar si el mensaje contiene una medida de neumático y devolver SOLO un JSON, sin texto adicional, sin explicaciones.
+
+Formatos posibles que el usuario puede escribir:
+- 185/65R15, 185/65-15, 185 65 15, 185-65-r15, 18565r15
+- "necesito 4 gomas 205/55-16"
+- "quiero 2 cubiertas para mi auto 195 60 15"
+- "cuánto sale una 175/70r13"
+- cualquier variación humana de estos formatos
+
+Si encontrás una medida, devolvé:
+{"encontrada": true, "ancho": "185", "perfil": "65", "llanta": "15"}
+
+Si NO hay medida, devolvé:
+{"encontrada": false}
+
+SOLO JSON, nada más.`;
+
+async function detectarMedidaConClaude(mensaje) {
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': process.env.ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 100,
+        system: EXTRACT_PROMPT,
+        messages: [{ role: 'user', content: mensaje }]
+      })
+    });
+    const data = await res.json();
+    const texto = data.content?.[0]?.text || '{"encontrada": false}';
+    const clean = texto.replace(/```json|```/g, '').trim();
+    return JSON.parse(clean);
+  } catch (e) {
+    return { encontrada: false };
   }
-  return null;
 }
 
 async function buscarProductos(medida) {
@@ -107,13 +140,14 @@ export default async function handler(req) {
     const mensaje = body.mensaje || body.message || '';
     const nombre = body.nombre || body.name || 'cliente';
 
-    const medida = extraerMedida(mensaje);
+    // Claude detecta si hay medida en el mensaje
+    const deteccion = await detectarMedidaConClaude(mensaje);
     let catalogoTexto = '';
 
-    if (medida) {
-      const productos = await buscarProductos(medida);
+    if (deteccion.encontrada) {
+      const productos = await buscarProductos(deteccion);
       if (productos && productos.length > 0) {
-        catalogoTexto = `\n\nRESULTADOS DEL CATÁLOGO para ${medida.ancho}/${medida.perfil}-${medida.llanta}:\n` +
+        catalogoTexto = `\n\nRESULTADOS DEL CATÁLOGO para ${deteccion.ancho}/${deteccion.perfil}-${deteccion.llanta}:\n` +
           productos.map(p => {
             if (p.oficial) {
               return `- [OFICIAL] ${p.nombre} | Precio: $${p.precio} | Link: ${p.link}`;
@@ -122,7 +156,7 @@ export default async function handler(req) {
             }
           }).join('\n');
       } else {
-        catalogoTexto = `\n\nBúsqueda en catálogo para ${medida.ancho}/${medida.perfil}-${medida.llanta}: sin stock suficiente (menos de 4 unidades). Derivar a asesor para próximo día hábil.`;
+        catalogoTexto = `\n\nBúsqueda en catálogo para ${deteccion.ancho}/${deteccion.perfil}-${deteccion.llanta}: sin stock suficiente (menos de 4 unidades). Derivar a asesor para próximo día hábil.`;
       }
     }
 
