@@ -152,7 +152,7 @@ async function obtenerHistorial(subscriberId) {
 async function guardarHistorial(subscriberId, historial) {
   try {
     // Mantener solo los últimos 20 mensajes para no crecer indefinidamente
-    const historialRecortado = historial.slice(-20);
+    const historialRecortado = historial.slice(-50);
     const url = `${process.env.SUPABASE_URL}/rest/v1/conversaciones`;
     await fetch(url, {
       method: 'POST',
