@@ -8,7 +8,7 @@ function esMarcaOficial(nombreProducto) {
 }
 
 const SYSTEM_PROMPT = `Sos el asistente virtual de Mantello Neumáticos atendiendo por WhatsApp. Representás una empresa profesional de Mendoza, Argentina. Tu objetivo es vender y resolver consultas. Trato de vos, tono amable y comercial. Sin groserías ni slang. Mensajes cortos como WhatsApp real. Algún emoji ocasional. Jamás usés mexicanismos. Si te preguntan si sos un bot o una IA, respondé honestamente que sí. Nunca uses la palabra "neumatiquería". El negocio se llama Mantello Neumáticos.
-IMPORTANTE: Nunca saludes con "hola", "bienvenido" ni ningún saludo al inicio de tus respuestas. Respondé directo a lo que pregunta el cliente, sin introducción. Usá el historial de la conversación para no repetir preguntas ni información que ya se dio.
+IMPORTANTE: Nunca saludes con "hola", "bienvenido" ni ningún saludo al inicio de tus respuestas. Respondé directo a lo que pregunta el cliente, sin introducción. Usá el historial de la conversación para no repetir preguntas ni información que ya se dio. Si el cliente ya dio su medida, no la volvás a pedir.
 
 SUCURSALES:
 - Casa Central: Francisco Gabrielli 3885, Maipú — Tel: 0261 559-7990
@@ -106,7 +106,6 @@ async function buscarProductos(medida, cantidad) {
     });
 
     if (!res.ok) return null;
-
     const productos = await res.json();
     const minStock = cantidad || 4;
 
@@ -117,7 +116,6 @@ async function buscarProductos(medida, cantidad) {
     );
 
     if (conStock.length === 0) return null;
-
     conStock.sort((a, b) => parseFloat(b.price) - parseFloat(a.price));
 
     return conStock.map(p => ({
@@ -134,7 +132,7 @@ async function buscarProductos(medida, cantidad) {
 
 async function obtenerHistorial(subscriberId) {
   try {
-    const url = `${process.env.SUPABASE_URL}/rest/v1/conversaciones?subscriber_id=eq.${subscriberId}&select=historial`;
+    const url = `${process.env.SUPABASE_URL}/rest/v1/conversaciones?subscriber_id=eq.${encodeURIComponent(subscriberId)}&select=historial`;
     const res = await fetch(url, {
       headers: {
         'apikey': process.env.SUPABASE_KEY,
@@ -151,7 +149,6 @@ async function obtenerHistorial(subscriberId) {
 
 async function guardarHistorial(subscriberId, historial) {
   try {
-    // Mantener solo los últimos 20 mensajes para no crecer indefinidamente
     const historialRecortado = historial.slice(-50);
     const url = `${process.env.SUPABASE_URL}/rest/v1/conversaciones`;
     await fetch(url, {
@@ -184,7 +181,7 @@ export default async function handler(req) {
     const nombre = body.nombre || body.name || 'cliente';
     const subscriberId = body.subscriber_id || 'anonimo';
 
-    // Detectar medida con Claude
+    // Detectar medida
     const deteccion = await detectarMedidaConClaude(mensaje);
     let catalogoTexto = '';
 
@@ -192,28 +189,33 @@ export default async function handler(req) {
       const cantidad = deteccion.cantidad || 4;
       const productos = await buscarProductos(deteccion, cantidad);
       if (productos && productos.length > 0) {
-        catalogoTexto = `\n\nRESULTADOS DEL CATÁLOGO para ${deteccion.ancho}/${deteccion.perfil}-${deteccion.llanta} (stock mínimo: ${cantidad} unidades):\n` +
-          productos.map(p => {
-            if (p.oficial) {
-              return `- [OFICIAL] ${p.nombre} | Precio: $${p.precio} | Link: ${p.link}`;
-            } else {
-              return `- [NO OFICIAL] ${p.nombre} | Precio: $${p.precio}`;
-            }
-          }).join('\n');
+        catalogoTexto = `\n\n[CATÁLOGO ${deteccion.ancho}/${deteccion.perfil}-${deteccion.llanta}]:\n` +
+          productos.map(p => p.oficial
+            ? `- [OFICIAL] ${p.nombre} | $${p.precio} | ${p.link}`
+            : `- [NO OFICIAL] ${p.nombre} | $${p.precio}`
+          ).join('\n');
       } else {
-        catalogoTexto = `\n\nBúsqueda en catálogo para ${deteccion.ancho}/${deteccion.perfil}-${deteccion.llanta}: sin stock suficiente para ${cantidad} unidades. Derivar a asesor para próximo día hábil.`;
+        catalogoTexto = `\n\n[CATÁLOGO ${deteccion.ancho}/${deteccion.perfil}-${deteccion.llanta}]: Sin stock suficiente para ${deteccion.cantidad || 4} unidades. Derivar a asesor.`;
       }
     }
 
-    // Obtener historial de Supabase
+    // Historial previo
     const historialPrevio = await obtenerHistorial(subscriberId);
 
-    // Armar mensajes para Claude con historial
-    const mensajeActual = mensaje + catalogoTexto;
+    // Mensaje del usuario limpio para el historial (sin prefijo de nombre)
+    const contenidoUsuario = nombre !== 'cliente'
+      ? `[${nombre}]: ${mensaje}${catalogoTexto}`
+      : `${mensaje}${catalogoTexto}`;
+
     const mensajesParaClaude = [
       ...historialPrevio,
-      { role: 'user', content: `El cliente se llama ${nombre}. Mensaje: ${mensajeActual}` }
+      { role: 'user', content: contenidoUsuario }
     ];
+
+    // System prompt incluye el nombre del cliente
+    const systemConNombre = nombre !== 'cliente'
+      ? `${SYSTEM_PROMPT}\n\nEl cliente se llama ${nombre}.`
+      : SYSTEM_PROMPT;
 
     const claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -225,7 +227,7 @@ export default async function handler(req) {
       body: JSON.stringify({
         model: 'claude-haiku-4-5-20251001',
         max_tokens: 1000,
-        system: SYSTEM_PROMPT,
+        system: systemConNombre,
         messages: mensajesParaClaude
       })
     });
@@ -233,10 +235,10 @@ export default async function handler(req) {
     const claudeData = await claudeRes.json();
     const respuesta = claudeData.content?.[0]?.text || 'Disculpá, hubo un problema. Escribinos al 261-563-1663.';
 
-    // Guardar historial actualizado en Supabase
+    // Guardar historial
     const historialActualizado = [
       ...historialPrevio,
-      { role: 'user', content: `El cliente se llama ${nombre}. Mensaje: ${mensajeActual}` },
+      { role: 'user', content: contenidoUsuario },
       { role: 'assistant', content: respuesta }
     ];
     await guardarHistorial(subscriberId, historialActualizado);
