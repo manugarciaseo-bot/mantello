@@ -132,39 +132,58 @@ async function buscarProductos(medida, cantidad) {
 
 async function obtenerHistorial(subscriberId) {
   try {
-    const url = `${process.env.SUPABASE_URL}/rest/v1/conversaciones?subscriber_id=eq.${encodeURIComponent(subscriberId)}&select=historial`;
+    const url = `${process.env.SUPABASE_URL}/rest/v1/conversaciones?subscriber_id=eq.${encodeURIComponent(subscriberId)}&select=id,historial`;
     const res = await fetch(url, {
       headers: {
         'apikey': process.env.SUPABASE_KEY,
         'Authorization': `Bearer ${process.env.SUPABASE_KEY}`
       }
     });
-    if (!res.ok) return [];
+    if (!res.ok) return { id: null, historial: [] };
     const data = await res.json();
-    return data?.[0]?.historial || [];
+    if (!data || data.length === 0) return { id: null, historial: [] };
+    return { id: data[0].id, historial: data[0].historial || [] };
   } catch (e) {
-    return [];
+    return { id: null, historial: [] };
   }
 }
 
-async function guardarHistorial(subscriberId, historial) {
+async function guardarHistorial(subscriberId, rowId, historial) {
   try {
     const historialRecortado = historial.slice(-50);
-    const url = `${process.env.SUPABASE_URL}/rest/v1/conversaciones`;
-    await fetch(url, {
-      method: 'POST',
-      headers: {
-        'apikey': process.env.SUPABASE_KEY,
-        'Authorization': `Bearer ${process.env.SUPABASE_KEY}`,
-        'Content-Type': 'application/json',
-        'Prefer': 'resolution=merge-duplicates'
-      },
-      body: JSON.stringify({
-        subscriber_id: subscriberId,
-        historial: historialRecortado,
-        actualizado_at: new Date().toISOString()
-      })
-    });
+    const supabaseUrl = process.env.SUPABASE_URL;
+    const supabaseKey = process.env.SUPABASE_KEY;
+
+    if (rowId) {
+      // UPDATE — fila existente
+      await fetch(`${supabaseUrl}/rest/v1/conversaciones?id=eq.${rowId}`, {
+        method: 'PATCH',
+        headers: {
+          'apikey': supabaseKey,
+          'Authorization': `Bearer ${supabaseKey}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          historial: historialRecortado,
+          actualizado_at: new Date().toISOString()
+        })
+      });
+    } else {
+      // INSERT — fila nueva
+      await fetch(`${supabaseUrl}/rest/v1/conversaciones`, {
+        method: 'POST',
+        headers: {
+          'apikey': supabaseKey,
+          'Authorization': `Bearer ${supabaseKey}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          subscriber_id: subscriberId,
+          historial: historialRecortado,
+          actualizado_at: new Date().toISOString()
+        })
+      });
+    }
   } catch (e) {
     // silencioso
   }
@@ -199,10 +218,10 @@ export default async function handler(req) {
       }
     }
 
-    // Historial previo
-    const historialPrevio = await obtenerHistorial(subscriberId);
+    // Obtener historial con ID de fila
+    const { id: rowId, historial: historialPrevio } = await obtenerHistorial(subscriberId);
 
-    // Mensaje del usuario limpio para el historial (sin prefijo de nombre)
+    // Contenido del mensaje para el historial
     const contenidoUsuario = nombre !== 'cliente'
       ? `[${nombre}]: ${mensaje}${catalogoTexto}`
       : `${mensaje}${catalogoTexto}`;
@@ -212,7 +231,6 @@ export default async function handler(req) {
       { role: 'user', content: contenidoUsuario }
     ];
 
-    // System prompt incluye el nombre del cliente
     const systemConNombre = nombre !== 'cliente'
       ? `${SYSTEM_PROMPT}\n\nEl cliente se llama ${nombre}.`
       : SYSTEM_PROMPT;
@@ -235,13 +253,13 @@ export default async function handler(req) {
     const claudeData = await claudeRes.json();
     const respuesta = claudeData.content?.[0]?.text || 'Disculpá, hubo un problema. Escribinos al 261-563-1663.';
 
-    // Guardar historial
+    // Guardar historial actualizado
     const historialActualizado = [
       ...historialPrevio,
       { role: 'user', content: contenidoUsuario },
       { role: 'assistant', content: respuesta }
     ];
-    await guardarHistorial(subscriberId, historialActualizado);
+    await guardarHistorial(subscriberId, rowId, historialActualizado);
 
     return new Response(JSON.stringify({ respuesta }), {
       status: 200,
