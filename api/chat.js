@@ -8,7 +8,7 @@ function esMarcaOficial(nombreProducto) {
 }
 
 const SYSTEM_PROMPT = `Sos el asistente virtual de Mantello Neumáticos atendiendo por WhatsApp. Representás una empresa profesional de Mendoza, Argentina. Tu objetivo es vender y resolver consultas. Trato de vos, tono amable y comercial. Sin groserías ni slang. Mensajes cortos como WhatsApp real. Algún emoji ocasional. Jamás usés mexicanismos. Si te preguntan si sos un bot o una IA, respondé honestamente que sí. Nunca uses la palabra "neumatiquería". El negocio se llama Mantello Neumáticos.
-IMPORTANTE: Solo saludá en el primer mensaje de la conversación. En los mensajes siguientes respondé directo sin saludar de nuevo. Usá el historial de la conversación para no repetir preguntas ni información que ya se dio. Si el cliente ya dio su medida, no la volvás a pedir.
+IMPORTANTE: Solo saludá en el primer mensaje de la conversación. En los mensajes siguientes respondé directo sin saludar de nuevo. Usá el historial para no repetir preguntas ni info ya dada. Si el cliente ya dio su medida, no la vuelvas a pedir.
 
 SUCURSALES:
 - Casa Central: Francisco Gabrielli 3885, Maipú — Tel: 0261 559-7990
@@ -29,6 +29,16 @@ CÓMO OFRECER PRODUCTOS:
 - Los productos marcados como [NO OFICIAL] NO tienen link — no mostrés ninguna URL. Decí que para esa marca lo atiende un asesor personalmente a primera hora del próximo día hábil.
 - No menciones la cantidad de stock disponible.
 
+SI TE PASO INFO DE BÚSQUEDA WEB SOBRE LA MEDIDA DE UN MODELO DE AUTO:
+- Usá esa info para decirle al cliente la medida de fábrica de su auto.
+- Aclará que puede confirmarla mirando el lateral del neumático actual o la tapa del baúl, porque puede variar según versión.
+- Después preguntale si quiere que le cotices esa medida.
+
+SI RECOMENDÁS TIPO DE NEUMÁTICO (ciudad, ruta, montaña, ripio, 4x4, etc.):
+- Solo recomendá dentro de las marcas que vende Mantello: Bridgestone, Firestone, Dayton, y las demás marcas disponibles en stock.
+- Nunca menciones ni recomiendes marcas que Mantello no vende.
+- Conectá siempre la recomendación con la búsqueda de stock real en el catálogo para esa medida.
+
 VEHÍCULOS INDUSTRIALES Y PESADOS:
 - Camiones, maquinaria agrícola, colectivos, micros y cualquier vehículo industrial o de carga: NO ofrezcas productos ni precios. Informá que este segmento lo atiende un asesor especializado y que a primera hora del próximo día hábil lo van a contactar.
 
@@ -43,30 +53,27 @@ MEDIOS DE PAGO:
 - Contado, transferencia bancaria o 1 cuota sin interés.
 - Para financiación en más cuotas: acercarse a cualquier sucursal.
 
-SI PREGUNTAN POR CUBIERTAS PARA UN MODELO DE AUTO ESPECÍFICO (ej: "tengo un Sandero"):
-- Decile amablemente que para darte la medida exacta puede mirarla en el lateral de su cubierta actual o en la tapa del baúl.
-
-SI NO SABE LA MEDIDA: decile que la puede ver en el lateral de la cubierta actual o en la tapa del baúl.
+SI NO SABE LA MEDIDA Y NO HAY INFO DE BÚSQUEDA WEB: decile que la puede ver en el lateral de la cubierta actual o en la tapa del baúl.
 
 SIEMPRE cerrá con una acción concreta: que compre online, que vaya al local, o que espere el contacto del asesor. Si no dio su nombre, pedíselo.`;
 
-const EXTRACT_PROMPT = `Sos un extractor de datos de mensajes sobre neumáticos. Tu única tarea es detectar si el mensaje contiene una medida de neumático y cuántas unidades pide el cliente. Devolvé SOLO un JSON, sin texto adicional, sin explicaciones.
+const EXTRACT_PROMPT = `Sos un extractor de datos de mensajes sobre neumáticos. Tu tarea es clasificar el mensaje del cliente en una de estas categorías y devolver SOLO un JSON, sin texto adicional.
 
-Ejemplos:
-- "185/65R15" → {"encontrada": true, "ancho": "185", "perfil": "65", "llanta": "15", "cantidad": 4}
-- "necesito 4 gomas 205/55-16" → {"encontrada": true, "ancho": "205", "perfil": "55", "llanta": "16", "cantidad": 4}
-- "quiero 2 cubiertas 195/60-15" → {"encontrada": true, "ancho": "195", "perfil": "60", "llanta": "15", "cantidad": 2}
-- "cuánto sale una 175/70r13" → {"encontrada": true, "ancho": "175", "perfil": "70", "llanta": "13", "cantidad": 1}
-- "necesito el precio de 4 cubiertas 205/55-16" → {"encontrada": true, "ancho": "205", "perfil": "55", "llanta": "16", "cantidad": 4}
-- "hola quiero saber precios" → {"encontrada": false}
-- "tienen gomas para un Sandero?" → {"encontrada": false}
+CATEGORÍA 1 - Medida numérica directa (ej: "185/65R15", "necesito 4 gomas 205/55-16", "quiero 2 cubiertas 195/60-15"):
+{"tipo": "medida_directa", "ancho": "185", "perfil": "65", "llanta": "15", "cantidad": 4}
+
+CATEGORÍA 2 - Pregunta por modelo de auto sin dar medida (ej: "qué medida lleva un Fiat Cronos", "necesito gomas para mi Sandero", "tengo un Corsa 2018 qué cubiertas le entran"):
+{"tipo": "modelo_auto", "consulta_busqueda": "medida de neumáticos de fábrica Fiat Cronos Argentina"}
+
+CATEGORÍA 3 - Ninguna de las anteriores (saludos, preguntas generales, precios de servicios, etc.):
+{"tipo": "ninguna"}
 
 Reglas:
-- Si el cliente no especifica cantidad, usá 4 por defecto.
-- La medida puede venir en cualquier formato: 185/65R15, 185-65-15, 185 65 15, etc.
+- Si no especifica cantidad en medida_directa, usá 4 por defecto.
+- Para modelo_auto, armá una consulta de búsqueda clara incluyendo marca, modelo y "Argentina" si no se menciona país.
 - SOLO JSON, nada más.`;
 
-async function detectarMedidaConClaude(mensaje) {
+async function clasificarMensaje(mensaje) {
   try {
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -77,17 +84,45 @@ async function detectarMedidaConClaude(mensaje) {
       },
       body: JSON.stringify({
         model: 'claude-haiku-4-5-20251001',
-        max_tokens: 100,
+        max_tokens: 150,
         system: EXTRACT_PROMPT,
         messages: [{ role: 'user', content: mensaje }]
       })
     });
     const data = await res.json();
-    const texto = data.content?.[0]?.text || '{"encontrada": false}';
+    const texto = data.content?.[0]?.text || '{"tipo": "ninguna"}';
     const clean = texto.replace(/```json|```/g, '').trim();
     return JSON.parse(clean);
   } catch (e) {
-    return { encontrada: false };
+    return { tipo: 'ninguna' };
+  }
+}
+
+// Busca la medida de fábrica de un modelo de auto usando web search
+async function buscarMedidaPorModelo(consultaBusqueda) {
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': process.env.ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 300,
+        tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 2 }],
+        messages: [{
+          role: 'user',
+          content: `Buscá: ${consultaBusqueda}. Decime SOLO la medida de neumático de fábrica en formato XXX/XX RXX (ejemplo: 185/65 R15). Si hay varias versiones, mencioná la más común primero. Respuesta breve, sin explicaciones largas.`
+        }]
+      })
+    });
+    const data = await res.json();
+    const textBlocks = data.content?.filter(b => b.type === 'text').map(b => b.text) || [];
+    return textBlocks.join(' ') || null;
+  } catch (e) {
+    return null;
   }
 }
 
@@ -155,7 +190,6 @@ async function guardarHistorial(subscriberId, rowId, historial) {
     const supabaseKey = process.env.SUPABASE_KEY;
 
     if (rowId) {
-      // UPDATE — fila existente
       await fetch(`${supabaseUrl}/rest/v1/conversaciones?id=eq.${rowId}`, {
         method: 'PATCH',
         headers: {
@@ -169,7 +203,6 @@ async function guardarHistorial(subscriberId, rowId, historial) {
         })
       });
     } else {
-      // INSERT — fila nueva
       await fetch(`${supabaseUrl}/rest/v1/conversaciones`, {
         method: 'POST',
         headers: {
@@ -200,31 +233,33 @@ export default async function handler(req) {
     const nombre = body.nombre || body.name || 'cliente';
     const subscriberId = body.subscriber_id || 'anonimo';
 
-    // Detectar medida
-    const deteccion = await detectarMedidaConClaude(mensaje);
-    let catalogoTexto = '';
+    const clasificacion = await clasificarMensaje(mensaje);
+    let infoExtra = '';
 
-    if (deteccion.encontrada) {
-      const cantidad = deteccion.cantidad || 4;
-      const productos = await buscarProductos(deteccion, cantidad);
+    if (clasificacion.tipo === 'medida_directa') {
+      const cantidad = clasificacion.cantidad || 4;
+      const productos = await buscarProductos(clasificacion, cantidad);
       if (productos && productos.length > 0) {
-        catalogoTexto = `\n\n[CATÁLOGO ${deteccion.ancho}/${deteccion.perfil}-${deteccion.llanta}]:\n` +
+        infoExtra = `\n\n[CATÁLOGO ${clasificacion.ancho}/${clasificacion.perfil}-${clasificacion.llanta}]:\n` +
           productos.map(p => p.oficial
             ? `- [OFICIAL] ${p.nombre} | $${p.precio} | ${p.link}`
             : `- [NO OFICIAL] ${p.nombre} | $${p.precio}`
           ).join('\n');
       } else {
-        catalogoTexto = `\n\n[CATÁLOGO ${deteccion.ancho}/${deteccion.perfil}-${deteccion.llanta}]: Sin stock suficiente para ${deteccion.cantidad || 4} unidades. Derivar a asesor.`;
+        infoExtra = `\n\n[CATÁLOGO ${clasificacion.ancho}/${clasificacion.perfil}-${clasificacion.llanta}]: Sin stock suficiente para ${cantidad} unidades. Derivar a asesor.`;
+      }
+    } else if (clasificacion.tipo === 'modelo_auto') {
+      const infoMedida = await buscarMedidaPorModelo(clasificacion.consulta_busqueda);
+      if (infoMedida) {
+        infoExtra = `\n\n[BÚSQUEDA WEB - medida de fábrica]: ${infoMedida}`;
       }
     }
 
-    // Obtener historial con ID de fila
     const { id: rowId, historial: historialPrevio } = await obtenerHistorial(subscriberId);
 
-    // Contenido del mensaje para el historial
     const contenidoUsuario = nombre !== 'cliente'
-      ? `[${nombre}]: ${mensaje}${catalogoTexto}`
-      : `${mensaje}${catalogoTexto}`;
+      ? `[${nombre}]: ${mensaje}${infoExtra}`
+      : `${mensaje}${infoExtra}`;
 
     const mensajesParaClaude = [
       ...historialPrevio,
@@ -253,7 +288,6 @@ export default async function handler(req) {
     const claudeData = await claudeRes.json();
     const respuesta = claudeData.content?.[0]?.text || 'Disculpá, hubo un problema. Escribinos al 261-563-1663.';
 
-    // Guardar historial actualizado
     const historialActualizado = [
       ...historialPrevio,
       { role: 'user', content: contenidoUsuario },
