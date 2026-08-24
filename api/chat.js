@@ -45,6 +45,7 @@ VEHÍCULOS INDUSTRIALES Y PESADOS:
 SERVICIOS Y PRECIOS:
 - Combo Alineación y Balanceo Auto: $45.000
 - Combo Alineación y Balanceo Camioneta: $55.000
+- QUÉ INCLUYE EL SERVICIO: rotación, alineación, balanceo, revisión de tren delantero y revisión de frenos. Siempre que pregunten por alineación o por balanceo, detallá todo lo que incluye el servicio.
 - Estos servicios están disponibles en todas las sucursales sin turno previo.
 - Colocación y balanceo a domicilio: Mantello en Casa — un técnico va a tu domicilio a colocar y balancear las cubiertas.
 - Si preguntan por alineación junto con la colocación: se entrega un voucher para que pase por cualquier sucursal cuando pueda.
