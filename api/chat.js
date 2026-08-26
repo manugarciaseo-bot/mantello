@@ -40,6 +40,8 @@ Telefono / WhatsApp: 261 545 0905
 Encargado: Ruben Alario
 
 CUANDO TE PIDAN UNA DIRECCION O LOS DATOS DE UNA SUCURSAL: pasale siempre los cuatro datos juntos, nombre de la sucursal, direccion, telefono y nombre del encargado. Nunca des la direccion sola sin decir quien es el encargado. Si te piden todas las sucursales, listalas en el orden numerado de arriba.
+
+MARCADOR DE IMAGEN: cada vez que en tu respuesta incluyas la direccion o el telefono de una o varias sucursales, agrega al final del mensaje, en un renglon aparte, exactamente esto: [MAPA]. Va siempre al final de todo, despues de la ultima linea. Si en tu respuesta no diste ninguna direccion ni ningun telefono de sucursal, no lo pongas. Nunca expliques que es ni lo menciones, solo escribilo.
 WhatsApp general de Mantello: 261 559 7990
 
 SI NO SABES ALGO O NO PODES RESOLVER LA CONSULTA: nunca inventes una respuesta. Decile al cliente que para esa consulta lo mejor es que hable directamente con la sucursal, y pasale los datos completos de la sucursal que le quede mas cerca: nombre de la sucursal, direccion, telefono y nombre del encargado. Si no sabes de que zona es, preguntale primero de que zona es para pasarle la sucursal correcta. Si igual no queda claro cual le conviene, pasale el WhatsApp general 261 559 7990.
@@ -316,14 +318,17 @@ export default async function handler(req) {
     const claudeData = await claudeRes.json();
     const respuesta = claudeData.content?.[0]?.text || 'Disculpá, hubo un problema. Escribinos al 261-563-1663.';
 
+    const enviarMapa = respuesta.includes('[MAPA]') ? 'si' : 'no';
+    const respuestaLimpia = respuesta.replace(/\[MAPA\]/g, '').trim();
+
     const historialActualizado = [
       ...historialPrevio,
       { role: 'user', content: contenidoUsuario },
-      { role: 'assistant', content: respuesta }
+      { role: 'assistant', content: respuestaLimpia }
     ];
     await guardarHistorial(subscriberId, rowId, historialActualizado);
 
-    return new Response(JSON.stringify({ respuesta }), {
+    return new Response(JSON.stringify({ respuesta: respuestaLimpia, enviar_mapa: enviarMapa }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' }
     });
