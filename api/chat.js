@@ -20,7 +20,7 @@ Telefono / WhatsApp: 261 515 9983
 Encargado: Mauro Cordoba
 
 2. Godoy Cruz
-Direccion: Avenida San Martin 22, Godoy Cruz
+Direccion: Avenida San Martin 10, Godoy Cruz
 Telefono / WhatsApp: 261 559 8052
 Encargado: Matias Canizzo
 
